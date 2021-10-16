@@ -1,0 +1,200 @@
+#include <Stepper.h>
+#include <HX711_ADC.h>
+#if defined(ESP8266)|| defined(ESP32) || defined(AVR)
+#include <EEPROM.h>
+#endif
+
+//pins:
+
+
+//HX711 constructor:
+
+const int calVal_eepromAdress = 0;
+unsigned long t = 0;
+
+
+
+#define HX711_sck  2 //mcu > HX711 sck pin
+#define HX711_dout  3 //mcu > HX711 dout pin
+# define touch_1 4
+# define touch_2 5
+# define touch_3 6
+#define A 22
+#define B 23
+#define C 24
+#define D 25
+# define echoPin 12
+# define trigPin 13
+#define buzzer 26
+
+Stepper myStepper(200, 8, 9, 10, 11);
+int l=0;
+double distance;
+double duration;
+double w;
+double weight();
+void level();
+double readDist();
+HX711_ADC LoadCell(HX711_dout, HX711_sck);
+
+void setup() {
+  Serial.begin(57600);
+  delay(10);
+  Serial.println();
+  Serial.println("Starting...");
+
+  LoadCell.begin();
+  //float calibrationValue; // calibration value (see example file "Calibration.ino")
+ const float calibrationValue = 475.06; // uncomment this if you want to set the calibration value in the sketch
+
+
+  unsigned long stabilizingtime = 2000; // preciscion right after power-up can be improved by adding a few seconds of stabilizing time
+  boolean _tare = false; //set this to false if you don't want tare to be performed in the next step
+  //LoadCell.start(stabilizingtime, _tare);
+    LoadCell.start(stabilizingtime);
+
+  if (LoadCell.getTareTimeoutFlag()) {
+    Serial.println("Timeout, check MCU>HX711 wiring and pin designations");
+    while (1);
+  }
+  else {
+    LoadCell.setCalFactor(calibrationValue); // set calibration value (float)
+    Serial.println("Startup is complete");
+  }
+  myStepper.setSpeed(75);
+  pinMode(echoPin,INPUT);
+  pinMode(trigPin,OUTPUT);
+  pinMode(touch_1,INPUT);
+  pinMode(touch_2,INPUT);
+  pinMode(touch_3,INPUT);
+  pinMode(buzzer, OUTPUT);
+ 
+}
+  
+
+
+
+void loop() {
+  w=weight();
+  
+  while (w>100)
+  {
+ tone(buzzer, 1000, 500); // Send 1KHz sound signal...
+  delay(250);        // ...for 1 sec  
+  w=weight();
+  }
+  distance =readDist();
+ //  Serial.println(distance);
+  if(digitalRead(touch_1)==HIGH)
+{
+  if (distance < 54)
+  {while( distance <54)
+  {
+    myStepper.step(-1);
+    distance=readDist();
+    Serial.print("Distance = ");
+    Serial.println(distance);
+    level();
+ }
+}
+}
+else if (digitalRead(touch_2)==HIGH)
+{
+  if (distance >= 30)
+  {while( distance >= 30)
+  {
+    myStepper.step(1);
+    distance=readDist();
+    Serial.print("Distance = ");
+    Serial.println(distance);
+    level();
+  }
+  }
+  else if (distance < 30)
+  {while( distance <30)
+  {
+    myStepper.step(-1);
+    distance=readDist();
+    Serial.print("Distance = ");
+    Serial.println(distance);
+    level();
+  }
+ }
+}
+else if (digitalRead(touch_3)==HIGH)
+{
+  if (distance >6)
+  {while( distance >6)
+  {
+    myStepper.step(1);
+    distance=readDist();
+    Serial.print("Distance = ");
+    Serial.println(distance);
+    level();
+  }
+  }
+  
+ }
+}
+
+void level()
+{
+  //if (l%25==0) {
+  if(distance >=44)
+ { 
+  digitalWrite(A,HIGH);
+  digitalWrite(B,LOW);
+  digitalWrite(C,LOW);
+  digitalWrite(D,LOW);
+}
+  else if(distance<44 && distance>19)
+  {
+    digitalWrite(A,LOW);
+    digitalWrite(B,HIGH);
+    digitalWrite(C,LOW);
+    digitalWrite(D,LOW);  
+  }
+  else if(distance<=19)
+  {
+    digitalWrite(A,HIGH);
+    digitalWrite(B,HIGH);
+    digitalWrite(C,LOW);
+    digitalWrite(D,LOW);
+  }
+ // }
+}
+
+
+double readDist()
+{
+  double x;
+  digitalWrite(trigPin,LOW);
+delayMicroseconds(2);
+digitalWrite(trigPin,HIGH);
+delayMicroseconds(10);
+duration=pulseIn(echoPin,HIGH);
+x=duration*0.034/2.0;
+return x;
+}
+
+double weight()
+{
+  float i;
+   static boolean newDataReady = 0;
+  const int serialPrintInterval = 0; //increase value to slow down serial print activity
+
+  // check for new data/start next conversion:
+  if (LoadCell.update()) newDataReady = true;
+
+  // get smoothed value from the dataset:
+  if (newDataReady) {
+    if (millis() > t + serialPrintInterval) {
+      i = LoadCell.getData();
+      Serial.print("Load_cell output val: ");
+      Serial.println(i);
+      newDataReady = 0;
+      t = millis();
+    }
+  }
+  return i;
+}
